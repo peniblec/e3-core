@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 
 import e3.log
 import e3.os.platform
+from e3.error import E3Error
 from e3.platform import Platform
 
 
@@ -47,8 +48,6 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
     :vartype host: Platform
     :ivar target: current target Platform
     :vartype target: Platform
-    :ivar main_options: The command-line switches, after parsing by
-    the e3.Main class (see the documentation of that class).
     """
 
     # class variable that holds the current environment
@@ -70,7 +69,7 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
             self.target = self.host if target is None else target
             self.environ: Optional[dict] = None
             self.cwd: Optional[str] = None
-            self.main_options: Optional[Namespace] = None
+            self._main_options: Optional[Namespace] = None
 
     @abc.abstractproperty
     def _initialized(self) -> bool:
@@ -574,6 +573,21 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
             # Verify that the computed platform is equal to what we had
             assert e.platform == platform
             return e
+
+    @property
+    def main_options(self) -> Namespace:
+        """Return parsed command-line arguments.
+
+        See the documentation of py:meth:`e3.main.Main.parse_args`.
+        """
+        if self._main_options is None:
+            raise E3Error("main options have not been set yet")
+
+        return self._main_options
+
+    @main_options.setter
+    def main_options(self, args: Namespace) -> None:
+        self._main_options = args
 
 
 if TYPE_CHECKING:
