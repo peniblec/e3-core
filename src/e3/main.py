@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 import e3
 import e3.log
 from e3.env import Env
+from e3.error import E3Error
 
 if TYPE_CHECKING:
     from types import FrameType
@@ -46,10 +47,10 @@ if TYPE_CHECKING:
 
 
 class Main:
-    """Class that implement argument parsing.
+    """Class that implement argument parsing."""
 
-    :ivar args: list of positional parameters after processing options
-    """
+    # Accessed through the args property; set in parse_args.
+    _args: Optional[Namespace] = None
 
     def __init__(
         self,
@@ -126,7 +127,6 @@ class Main:
             if e.build.os.name == "windows" and default_x86_64_on_windows:
                 argument_parser.set_defaults(build="x86_64-windows64")
 
-        self.args: Optional[Namespace] = None
         self.argument_parser = argument_parser
         self.__log_handlers_set = False
 
@@ -156,9 +156,9 @@ class Main:
             arguments are present
         """
         if known_args_only:
-            self.args, _ = self.argument_parser.parse_known_args(args)
+            self._args, _ = self.argument_parser.parse_known_args(args)
         else:
-            self.args = self.argument_parser.parse_args(args)
+            self._args = self.argument_parser.parse_args(args)
 
         if not self.__log_handlers_set:
             e3.log.activate_with_args(self.args, logging.INFO)
@@ -166,9 +166,20 @@ class Main:
 
         # Export options to env
         e = Env()
-        e.main_options = self.args
+        e.set_main_options(self.args)
 
         if hasattr(self.args, "e3_main_platform_args_supported"):
             e3.log.debug("parsing --build/--host/--target")
             # Handle --build, --host, and --target arguments
             e.set_env(self.args.build, self.args.host, self.args.target)
+
+    @property
+    def args(self) -> Namespace:
+        """Return parsed command-line arguments.
+
+        Raise an error if py:meth:`parse_args`. was not called first.
+        """
+        if self._args is None:
+            raise E3Error("main options have not been set yet")
+
+        return self._args
