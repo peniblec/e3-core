@@ -51,6 +51,12 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
     the e3.Main class (see the documentation of that class).
     """
 
+    # class variable that holds the current environment
+    _instance: dict[str, Any]
+
+    # class variable that holds the stack of saved environments state
+    _context: list[Any]
+
     @abc.abstractmethod
     def __init__(
         self,
@@ -78,6 +84,30 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
     def _items(self) -> Iterable:
         """Return the list of instance variables."""
         pass  # all: no cover
+
+    @abc.abstractmethod
+    def _set_class_variable(self, name: str, value: Any) -> None:
+        """Set an attribute that does not belong in self._instance."""
+        pass
+
+    def __setattr__(
+        self,
+        name: str,
+        value: Any,
+    ) -> None:
+        """Set either an instance variable or a regular attribute.
+
+        Either set self._instance[name] to value, or update a class variable
+        with self._set_class_variable.
+
+        :param name: the attribute to set.
+        :param value: the value to set the attribute to.
+        """
+        if name in ("_instance", "_context"):
+            self._set_class_variable(name, value)
+            return
+
+        self._instance[name] = value
 
     @property
     def platform(self) -> str:
@@ -564,18 +594,12 @@ class BaseEnv(AbstractBaseEnv):
         :param host: host architecture. If None then it is set to build
         :param target: target architecture. If None then it is set to target
         """
-        # class variable that holds the current environment
-        self._instance: dict[str, Any] = {}
-
-        # class variable that holds the stack of saved environments state
-        self._context: list[Any] = []
+        self._instance = {}
+        self._context = []
         super().__init__(build, host, target)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name in ("_instance", "_context"):
-            object.__setattr__(self, name, value)
-        else:
-            self._instance[name] = value
+    def _set_class_variable(self, name: str, value: Any) -> None:
+        object.__setattr__(self, name, value)
 
     def __getattr__(self, name: str) -> None:
         try:
@@ -628,10 +652,7 @@ class Env(AbstractBaseEnv):
     py:meth:`set_build`, py:meth:`set_host`, and py:meth:`set_target`.
     """
 
-    # class variable that holds the current environment
     _instance: dict[str, Any] = {}
-
-    # class variable that holds the stack of saved environments state
     _context: list[Any] = []
 
     def __init__(self) -> None:
@@ -646,13 +667,8 @@ class Env(AbstractBaseEnv):
     def _initialized(self) -> bool:
         return "build" in Env._instance
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name == "_instance":
-            Env._instance = value
-        elif name == "_context":
-            Env._context = value
-        else:
-            self._instance[name] = value
+    def _set_class_variable(self, name: str, value: Any) -> None:
+        type.__setattr__(type(self), name, value)
 
     def __getattr__(self, name: str) -> Any:
         try:
