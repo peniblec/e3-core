@@ -97,14 +97,22 @@ class AbstractBaseEnv(metaclass=abc.ABCMeta):
     ) -> None:
         """Set either an instance variable or a regular attribute.
 
-        Either set self._instance[name] to value, or update a class variable
-        with self._set_class_variable.
+        Set self._instance[name] to value, unless
+        * name designates a class variable: then call self._set_class_variable,
+        * name designates a property with a setter: then call that setter.
 
         :param name: the attribute to set.
         :param value: the value to set the attribute to.
         """
         if name in ("_instance", "_context"):
             self._set_class_variable(name, value)
+            return
+
+        # Check whether our class definition has that name: it might be a
+        # property with a setter.
+        class_attr = getattr(type(self), name, None)
+        if isinstance(class_attr, property) and class_attr.fset is not None:
+            class_attr.fset(self, value)  # type: ignore[call-arg]
             return
 
         self._instance[name] = value
