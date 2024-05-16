@@ -239,6 +239,23 @@ class HTTPSession:
             status=last_status,
         )
 
+    def _write_response(
+        self,
+        response: Response,
+        out: _Fileobj,
+        resource_name: str,
+    ) -> None:
+        content_length = int(response.headers.get("content-length", 0))
+        logger.info(f"downloading {resource_name} size={content_length}")
+
+        with e3.log.progress_bar(
+            None, total=content_length, unit="B", unit_scale=True
+        ) as progress_bar:
+
+            for chunk in response.iter_content(self.CHUNK_SIZE):
+                progress_bar.update(len(chunk))
+                out.write(chunk)
+
     def download_file(
         self,
         url: str,
@@ -283,23 +300,14 @@ class HTTPSession:
             with contextlib.closing(
                 self.request(method="GET", url=url, stream=True, **kwargs)
             ) as response:
-                content_length = int(response.headers.get("content-length", 0))
                 e3.log.debug(response.headers)
                 if filename is None:
                     if "content-disposition" in response.headers:
                         filename = get_filename(response.headers["content-disposition"])
 
-                expected_size = content_length // self.CHUNK_SIZE
-
-                chunks = e3.log.progress_bar(
-                    response.iter_content(self.CHUNK_SIZE), total=expected_size
-                )
-
                 if fileobj is not None:
                     # Write to file object if provided
-                    logger.info("downloading %s size=%s", filename, content_length)
-                    for chunk in chunks:
-                        fileobj.write(chunk)
+                    self._write_response(response, fileobj, filename)
                     return filename
                 else:
                     # Dest can't be None here according to condition at the top
@@ -321,11 +329,8 @@ class HTTPSession:
                     if not os.path.exists(dest_dir):
                         mkdir(dest_dir)
 
-                    logger.info("downloading %s size=%s", path, content_length)
-
                     with open(path, "wb") as fd:
-                        for chunk in chunks:
-                            fd.write(chunk)
+                        self._write_response(response, fd, path)
 
                     if validate is None or validate(path):
                         return path
